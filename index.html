@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Flappy Código 🐦</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    h1 {
+      color: #FFD700;
+      font-size: 1.3rem;
+      letter-spacing: 3px;
+      margin-bottom: 8px;
+      text-shadow: 0 0 15px #FFD700;
+    }
+
+    canvas {
+      border-radius: 12px;
+      box-shadow: 0 0 40px #4444ff44;
+      display: block;
+      /* Garante que o canvas caiba em telas pequenas */
+      max-width: 95vw;
+      max-height: 80vh;
+    }
+
+    #dica {
+      color: #888;
+      font-size: 0.8rem;
+      margin-top: 8px;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>🐦 FLAPPY CÓDIGO</h1>
+<canvas id="tela"></canvas>
+<div id="dica">Toque ou pressione ESPAÇO para voar</div>
+
+<script>
+// ============================================================
+//  FLAPPY CÓDIGO — Jogo educacional simples
+//  Feito com HTML5 Canvas + JavaScript puro
+//  Comentários em português para fins didáticos 🇧🇷
+// ============================================================
+
+// ── Configuração da tela ─────────────────────────────────────
+const tela = document.getElementById('tela');
+const ctx  = tela.getContext('2d');
+
+// Tamanho fixo do jogo (vai escalar para caber no celular)
+const LARGURA = 360;
+const ALTURA  = 640;
+tela.width  = LARGURA;
+tela.height = ALTURA;
+
+// ── Constantes do jogo ───────────────────────────────────────
+const GRAVIDADE       = 0.45;   // força que puxa o pássaro para baixo
+const FORCA_PULO      = -9;     // impulso para cima ao tocar/clicar
+const VELOCIDADE_CANO = 2.8;    // velocidade que os canos se movem
+const ESPACO_CANO     = 155;    // espaço entre o cano de cima e o de baixo
+const LARGURA_CANO    = 55;     // largura de cada par de canos
+const INTERVALO_CANO  = 95;     // distância horizontal entre os pares de canos
+
+// ── Variáveis do pássaro ─────────────────────────────────────
+let passaro = {
+  x:          90,       // posição horizontal (não muda)
+  y:          ALTURA / 2,   // posição vertical inicial
+  velocidade: 0,        // velocidade vertical atual
+  raio:       18,       // tamanho do pássaro (círculo)
+  angulo:     0,        // ângulo de rotação (animação)
+  bater:      0,        // contador para animar as asas
+};
+
+// ── Variáveis do jogo ────────────────────────────────────────
+let canos       = [];   // lista de pares de canos na tela
+let pontuacao   = 0;    // pontos do jogador
+let melhorPontos = 0;   // recorde da sessão
+let estado      = "inicio";   // "inicio", "jogando" ou "morreu"
+let quadros     = 0;    // contador de quadros para gerar canos
+
+// ── Cores do jogo ────────────────────────────────────────────
+const COR = {
+  ceu:      "#87CEEB",   // azul claro do fundo
+  ceuNoite: "#1a1a2e",   // azul escuro (tema dark)
+  chao:     "#8B6914",   // marrom do chão
+  gramas:   "#228B22",   // verde da grama
+  cano:     "#2ECC40",   // verde dos canos
+  canoBorda:"#27AE60",   // borda dos canos
+  passaro:  "#FFD700",   // amarelo do pássaro
+  asa:      "#FF8C00",   // laranja das asas
+  olho:     "#FFFFFF",   // branco do olho
+  bico:     "#FF4500",   // vermelho do bico
+  texto:    "#FFFFFF",   // branco para textos
+};
+
+// ── Função: criar um novo par de canos ───────────────────────
+// Gera a posição vertical aleatória do espaço entre os canos
+function criarPar() {
+  // sorteia onde começa o espaço (entre 20% e 60% da altura da tela)
+  const aberturaY = Math.random() * (ALTURA * 0.4) + ALTURA * 0.15;
+
+  return {
+    x:         LARGURA + 20,    // começa fora da tela (à direita)
+    aberturaY: aberturaY,       // posição vertical do espaço
+    pontuou:   false,           // já deu ponto para o jogador?
+  };
+}
+
+// ── Função: reiniciar o jogo ─────────────────────────────────
+function reiniciar() {
+  passaro.y         = ALTURA / 2;
+  passaro.velocidade = 0;
+  passaro.angulo    = 0;
+
+  canos     = [];
+  pontuacao = 0;
+  quadros   = 0;
+  estado    = "jogando";
+}
+
+// ── Função: pulo do pássaro ───────────────────────────────────
+function pular() {
+  if (estado === "inicio") {
+    reiniciar();
+    return;
+  }
+  if (estado === "morreu") {
+    // espera 1 segundo antes de reiniciar após morte
+    setTimeout(reiniciar, 800);
+    return;
+  }
+  passaro.velocidade = FORCA_PULO;
+  passaro.bater = 8;   // aciona animação das asas
+}
+
+// ── Controles: teclado e toque ───────────────────────────────
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space") {
+    e.preventDefault();
+    pular();
+  }
+});
+tela.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  pular();
+});
+
+// ── Função: desenhar o fundo ─────────────────────────────────
+function desenharFundo() {
+  // Gradiente do céu
+  const gradiente = ctx.createLinearGradient(0, 0, 0, ALTURA);
+  gradiente.addColorStop(0, "#1a1a3e");
+  gradiente.addColorStop(0.6, "#16213e");
+  gradiente.addColorStop(1, "#0f3460");
+  ctx.fillStyle = gradiente;
+  ctx.fillRect(0, 0, LARGURA, ALTURA);
+
+  // Estrelinhas decorativas
+  ctx.fillStyle = "rgba(255,255,255,0.6)";
+  const estrelas = [[30,40],[80,20],[150,60],[220,30],[290,50],[330,25],[60,100],[200,90]];
+  estrelas.forEach(([ex,ey]) => {
+    ctx.beginPath();
+    ctx.arc(ex, ey, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Chão
+  ctx.fillStyle = "#1B4332";
+  ctx.fillRect(0, ALTURA - 60, LARGURA, 60);
+
+  // Faixa de grama
+  ctx.fillStyle = "#2D6A4F";
+  ctx.fillRect(0, ALTURA - 60, LARGURA, 14);
+
+  // Listrinhas da grama
+  ctx.strokeStyle = "#40916C";
+  ctx.lineWidth = 2;
+  for (let gx = 8; gx < LARGURA; gx += 18) {
+    ctx.beginPath();
+    ctx.moveTo(gx, ALTURA - 60);
+    ctx.lineTo(gx - 5, ALTURA - 72);
+    ctx.moveTo(gx + 6, ALTURA - 60);
+    ctx.lineTo(gx + 11, ALTURA - 74);
+    ctx.stroke();
+  }
+}
+
+// ── Função: desenhar os canos ─────────────────────────────────
+function desenharCanos() {
+  canos.forEach(cano => {
+    const cx        = cano.x;
+    const abertura  = cano.aberturaY;
+    const altoCima  = abertura - ESPACO_CANO / 2;    // altura do cano de cima
+    const inicioB   = abertura + ESPACO_CANO / 2;    // onde começa o cano de baixo
+
+    // Sombra dos canos
+    ctx.shadowColor = "#00000055";
+    ctx.shadowBlur  = 8;
+
+    // ── Cano de CIMA ──────────────────────────────────────
+    ctx.fillStyle = COR.cano;
+    ctx.fillRect(cx, 0, LARGURA_CANO, altoCima - 14);
+
+    // Capuz do cano de cima
+    ctx.fillStyle = COR.canoBorda;
+    ctx.fillRect(cx - 6, altoCima - 24, LARGURA_CANO + 12, 24);
+
+    // ── Cano de BAIXO ─────────────────────────────────────
+    ctx.fillStyle = COR.cano;
+    ctx.fillRect(cx, inicioB + 14, LARGURA_CANO, ALTURA - inicioB - 14);
+
+    // Capuz do cano de baixo
+    ctx.fillStyle = COR.canoBorda;
+    ctx.fillRect(cx - 6, inicioB, LARGURA_CANO + 12, 24);
+
+    // Brilho nos canos (efeito visual)
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.fillRect(cx + 6, 0, 10, altoCima - 14);
+    ctx.fillRect(cx + 6, inicioB + 14, 10, ALTURA);
+
+    ctx.shadowBlur = 0;
+  });
+}
+
+// ── Função: desenhar o pássaro ───────────────────────────────
+function desenharPassaro() {
+  ctx.save();
+
+  // Move a origem para o centro do pássaro
+  ctx.translate(passaro.x, passaro.y);
+
+  // Inclina o pássaro conforme a velocidade (mergulha e sobe)
+  const alvoAngulo = passaro.velocidade * 3.5;
+  passaro.angulo  += (alvoAngulo - passaro.angulo) * 0.18;
+  ctx.rotate((passaro.angulo * Math.PI) / 180);
+
+  const r = passaro.raio;
+
+  // Sombra do pássaro
+  ctx.shadowColor = "#00000066";
+  ctx.shadowBlur  = 10;
+
+  // Corpo (círculo amarelo)
+  ctx.fillStyle = COR.passaro;
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Asa (animada quando pula)
+  const osaY = passaro.bater > 0 ? -8 : 4;
+  ctx.fillStyle = COR.asa;
+  ctx.beginPath();
+  ctx.ellipse(-4, osaY, 10, 6, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+  if (passaro.bater > 0) passaro.bater--;
+
+  ctx.shadowBlur = 0;
+
+  // Olho branco
+  ctx.fillStyle = COR.olho;
+  ctx.beginPath();
+  ctx.arc(7, -5, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Pupila
+  ctx.fillStyle = "#222";
+  ctx.beginPath();
+  ctx.arc(9, -5, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Brilho do olho
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(10, -7, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Bico
+  ctx.fillStyle = COR.bico;
+  ctx.beginPath();
+  ctx.moveTo(13, -2);
+  ctx.lineTo(22, 0);
+  ctx.lineTo(13, 4);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ── Função: verificar colisão ────────────────────────────────
+// Retorna true se o pássaro colidiu com algum cano ou com o chão
+function verificarColisao() {
+  // Colisão com o chão
+  if (passaro.y + passaro.raio >= ALTURA - 60) return true;
+
+  // Colisão com o teto
+  if (passaro.y - passaro.raio <= 0) return true;
+
+  // Colisão com os canos
+  for (const cano of canos) {
+    const abertura = cano.aberturaY;
+    const altoCima = abertura - ESPACO_CANO / 2;
+    const inicioB  = abertura + ESPACO_CANO / 2;
+
+    // Caixa de colisão do cano (um pouco menor para ser justo)
+    const esq  = cano.x + 4;
+    const dir  = cano.x + LARGURA_CANO - 4;
+    const dentroCanoX = passaro.x + passaro.raio - 6 > esq &&
+                        passaro.x - passaro.raio + 6 < dir;
+
+    if (dentroCanoX) {
+      // Bateu no cano de cima ou de baixo?
+      if (passaro.y - passaro.raio < altoCima) return true;
+      if (passaro.y + passaro.raio > inicioB)  return true;
+    }
+  }
+  return false;
+}
+
+// ── Função: atualizar a lógica do jogo ───────────────────────
+function atualizar() {
+  if (estado !== "jogando") return;
+
+  quadros++;
+
+  // Aplica gravidade ao pássaro
+  passaro.velocidade += GRAVIDADE;
+  passaro.y          += passaro.velocidade;
+
+  // Gera novos pares de canos periodicamente
+  if (quadros % INTERVALO_CANO === 0) {
+    canos.push(criarPar());
+  }
+
+  // Move os canos para a esquerda e remove os que saíram da tela
+  canos = canos.filter(cano => {
+    cano.x -= VELOCIDADE_CANO;
+
+    // O pássaro passou pelo cano? Soma ponto!
+    if (!cano.pontuou && cano.x + LARGURA_CANO < passaro.x) {
+      pontuacao++;
+      cano.pontuou = true;
+      if (pontuacao > melhorPontos) melhorPontos = pontuacao;
+    }
+
+    return cano.x + LARGURA_CANO > 0;   // remove se saiu da tela
+  });
+
+  // Verifica se o pássaro colidiu com algo
+  if (verificarColisao()) {
+    estado = "morreu";
+  }
+}
+
+// ── Função: desenhar o placar ─────────────────────────────────
+function desenharPlacar() {
+  // Pontuação principal
+  ctx.textAlign    = "center";
+  ctx.fillStyle    = "rgba(255,255,255,0.9)";
+  ctx.font         = "bold 52px Courier New";
+  ctx.shadowColor  = "#000";
+  ctx.shadowBlur   = 8;
+  ctx.fillText(pontuacao, LARGURA / 2, 80);
+  ctx.shadowBlur   = 0;
+
+  // Recorde
+  if (melhorPontos > 0) {
+    ctx.fillStyle = "rgba(255,215,0,0.7)";
+    ctx.font      = "16px Courier New";
+    ctx.fillText("🏆 " + melhorPontos, LARGURA / 2, 105);
+  }
+}
+
+// ── Função: tela de início ────────────────────────────────────
+function desenharTelaInicio() {
+  // Painel central
+  ctx.fillStyle = "rgba(0,0,0,0.65)";
+  arredondado(LARGURA/2 - 130, ALTURA/2 - 120, 260, 230, 20);
+  ctx.fill();
+
+  ctx.textAlign = "center";
+
+  ctx.fillStyle = "#FFD700";
+  ctx.font      = "bold 28px Courier New";
+  ctx.fillText("🐦 FLAPPY CÓDIGO", LARGURA / 2, ALTURA / 2 - 75);
+
+  ctx.fillStyle = "#ccc";
+  ctx.font      = "14px Courier New";
+  ctx.fillText("Um exemplo de jogo feito com", LARGURA / 2, ALTURA / 2 - 40);
+  ctx.fillText("HTML + CSS + JavaScript", LARGURA / 2, ALTURA / 2 - 18);
+
+  // Botão
+  ctx.fillStyle = "#FFD700";
+  arredondado(LARGURA/2 - 90, ALTURA/2 + 20, 180, 50, 14);
+  ctx.fill();
+  ctx.fillStyle = "#1a1a2e";
+  ctx.font      = "bold 18px Courier New";
+  ctx.fillText("▶  COMEÇAR", LARGURA / 2, ALTURA / 2 + 52);
+
+  ctx.fillStyle = "#888";
+  ctx.font      = "12px Courier New";
+  ctx.fillText("Toque ou ESPAÇO para pular", LARGURA / 2, ALTURA / 2 + 90);
+}
+
+// ── Função: tela de game over ────────────────────────────────
+function desenharGameOver() {
+  ctx.fillStyle = "rgba(0,0,0,0.65)";
+  arredondado(LARGURA/2 - 130, ALTURA/2 - 120, 260, 220, 20);
+  ctx.fill();
+
+  ctx.textAlign = "center";
+
+  ctx.fillStyle = "#EF4444";
+  ctx.font      = "bold 30px Courier New";
+  ctx.fillText("💥 GAME OVER", LARGURA / 2, ALTURA / 2 - 72);
+
+  ctx.fillStyle = "#fff";
+  ctx.font      = "18px Courier New";
+  ctx.fillText("Pontos: " + pontuacao, LARGURA / 2, ALTURA / 2 - 32);
+
+  ctx.fillStyle = "#FFD700";
+  ctx.font      = "15px Courier New";
+  ctx.fillText("🏆 Recorde: " + melhorPontos, LARGURA / 2, ALTURA / 2 - 6);
+
+  ctx.fillStyle = "#FFD700";
+  arredondado(LARGURA/2 - 90, ALTURA/2 + 25, 180, 50, 14);
+  ctx.fill();
+  ctx.fillStyle = "#1a1a2e";
+  ctx.font      = "bold 16px Courier New";
+  ctx.fillText("▶  TENTAR NOVAMENTE", LARGURA / 2, ALTURA / 2 + 56);
+}
+
+// ── Utilitário: retângulo arredondado ────────────────────────
+function arredondado(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ── Loop principal do jogo ───────────────────────────────────
+// Esta função é chamada ~60 vezes por segundo pelo navegador
+function loopDoJogo() {
+  // 1. Atualiza a lógica
+  atualizar();
+
+  // 2. Desenha tudo na tela (sempre nesta ordem!)
+  desenharFundo();
+  desenharCanos();
+  desenharPassaro();
+  desenharPlacar();
+
+  // 3. Exibe tela especial se necessário
+  if (estado === "inicio")  desenharTelaInicio();
+  if (estado === "morreu")  desenharGameOver();
+
+  // 4. Agenda o próximo quadro
+  requestAnimationFrame(loopDoJogo);
+}
+
+// ── Inicia o jogo! ───────────────────────────────────────────
+loopDoJogo();
+</script>
+</body>
+</html>
